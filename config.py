@@ -348,6 +348,7 @@ def load_settings():
             "ghost_piece": True,
             "effects": True,  # エフェクト表示
             "effect_type": "default",  # エフェクトタイプ
+            "selected_bgm": "tetris_theme.mp3",  # BGM設定を追加
             "game_mode": "marathon",  # ゲームモード
             "das": 0.17,  # Delayed Auto Shift (秒)
             "arr": 0.03,  # Auto Repeat Rate (秒)

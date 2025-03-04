@@ -2,6 +2,7 @@ import pygame
 import sys
 import config
 import key_config
+import os
 
 # Pygameの初期化
 pygame.init()
@@ -28,6 +29,39 @@ def main():
 
     # BGM再生フラグ（ゲーム中のみtrue）
     bgm_playing = False
+
+    # BGMフォルダの確認と作成
+    if not os.path.exists("assets/bgm"):
+        os.makedirs("assets/bgm")
+        print("assets/bgm フォルダを作成しました。BGMファイルを配置してください。")
+
+        # 既存のBGMファイルがある場合は移動
+        if os.path.exists("assets/tetris_theme.mp3"):
+            import shutil
+
+            try:
+                shutil.copy("assets/tetris_theme.mp3", "assets/bgm/tetris_theme.mp3")
+                print("既存のBGMファイルを assets/bgm/ に移動しました")
+            except Exception as e:
+                print(f"BGMファイル移動エラー: {e}")
+
+    # BGM管理の初期化
+    import bgm_manager
+
+    bgm_list = bgm_manager.get_bgm_list()
+    if bgm_list:
+        print(f"利用可能なBGM: {len(bgm_list)}曲")
+        # 選択されているBGMが存在するか確認
+        current_bgm = config.settings.get("selected_bgm")
+        if current_bgm not in bgm_list and bgm_list:
+            # 存在しない場合は最初のBGMを選択
+            config.settings["selected_bgm"] = bgm_list[0]
+            config.save_settings(config.settings)
+            print(f"BGMをデフォルトに設定: {bgm_list[0]}")
+    else:
+        print(
+            "BGMが見つかりません。assets/bgmフォルダにMP3, OGG, WAVファイルを追加してください。"
+        )
 
     # BGMの再生（設定がONの場合）
     if config.has_music and config.settings.get("music", True):
@@ -154,15 +188,11 @@ def main():
                             print(
                                 f"has_music: {config.has_music}, music設定: {config.settings.get('music', True)}"
                             )
+                            # BGMの再生（設定がONの場合）
                             if config.has_music and config.settings.get("music", True):
-                                try:
-                                    print("BGMを読み込み中: assets/tetris_theme.mp3")
-                                    pygame.mixer.music.load("assets/tetris_theme.mp3")
-                                    pygame.mixer.music.set_volume(0.5)  # 音量を確認
-                                    pygame.mixer.music.play(-1)  # 無限ループで再生
-                                    print("BGM再生開始")
-                                except Exception as e:
-                                    print(f"BGM再生エラー: {e}")
+                                import bgm_manager
+
+                                bgm_manager.play_bgm()
 
                         # メニューに戻る処理でBGMを停止
                         elif (
@@ -328,6 +358,15 @@ def main():
                                     pygame.mixer.music.play(-1)
                                 else:
                                     pygame.mixer.music.stop()
+
+                        # 設定メニューの処理部分に追加
+                        elif action == "select_bgm":
+                            # BGM選択画面へ
+                            import bgm_manager
+
+                            bgm_manager.run_bgm_selection(screen)
+                            game_state = "settings"  # 設定メニューに戻る
+
                         elif action == "sound":
                             # 効果音切替
                             config.settings["sound"] = not config.settings.get(

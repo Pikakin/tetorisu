@@ -1,6 +1,7 @@
 import pygame
 import random
 import config  # configモジュール全体をインポート
+import os
 
 
 # ボタンクラス
@@ -829,11 +830,24 @@ def draw_settings_menu(screen, scroll_offset=0):
         action="music",
     )
 
-    # 効果音切替ボタン
+    # BGM選択ボタン（ここを追加）
+    bgm_name = os.path.splitext(
+        config.settings.get("selected_bgm", "tetris_theme.mp3")
+    )[0]
+    bgm_button = Button(
+        button_x,
+        base_y + button_spacing * 3,
+        button_width,
+        50 * config.scale_factor,
+        f"BGM: {bgm_name}",
+        action="select_bgm",
+    )
+
+    # 効果音切替ボタン（位置調整が必要）
     sound_status = "ON" if config.settings.get("sound", True) else "OFF"
     sound_button = Button(
         button_x,
-        base_y + button_spacing * 3,
+        base_y + button_spacing * 4,  # 番号を1つ増やす
         button_width,
         50 * config.scale_factor,
         f"効果音: {sound_status}",
@@ -885,6 +899,7 @@ def draw_settings_menu(screen, scroll_offset=0):
     buttons.append(effects_button)
     buttons.append(effect_type_button)
     buttons.append(music_button)
+    buttons.append(bgm_button)
     buttons.append(sound_button)
     buttons.append(ghost_button)
     buttons.append(key_config_button)
