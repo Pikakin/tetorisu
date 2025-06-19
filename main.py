@@ -20,6 +20,29 @@ def main():
     # サウンドの初期化
     config.init_sounds()
 
+    # キー設定確認
+    print("=== キー設定確認 ===")
+    current_left = config.settings.get("key_bindings", {}).get(
+        "move_left", pygame.K_LEFT
+    )
+    current_right = config.settings.get("key_bindings", {}).get(
+        "move_right", pygame.K_RIGHT
+    )
+    print(f"現在のキー設定 - 左: {current_left}, 右: {current_right}")
+    print("これらは正常なSDL2キーコードです")
+
+    # DAS/ARR用の変数（初期化確認）
+    das_timer = 0
+    arr_timer = 0
+    das_delay = 0.167  # 約10フレーム@60fps
+    arr_delay = 0.033  # 約2フレーム@60fps
+    last_move_direction = 0
+
+    print(f"DAS/ARR変数初期化完了 - das_delay: {das_delay}, arr_delay: {arr_delay}")
+
+    # キー状態管理（イベント駆動）
+    keys_held = {}  # キーが押されている状態を管理
+
     # ゲーム状態
     game_state = "menu"  # menu, game, pause, game_over, high_scores, settings
     game = None
@@ -82,6 +105,9 @@ def main():
                 sys.exit()
 
             elif event.type == pygame.KEYDOWN:
+                # キー状態を記録
+                keys_held[event.key] = True
+
                 # ESCキーでメニューまたは一時停止
                 if event.key == pygame.K_ESCAPE:
                     if game_state == "game":
@@ -95,13 +121,19 @@ def main():
                 if game_state == "game" and game:
                     key_bindings = config.settings.get("key_bindings", {})
 
-                    # 左移動
+                    # 左右移動（初回移動 + DAS/ARRタイマー開始）
                     if event.key == key_bindings.get("move_left", pygame.K_LEFT):
                         game.move(-1)
-
-                    # 右移動
+                        # DAS/ARRタイマーを初期化
+                        das_timer = 0
+                        arr_timer = 0
+                        last_move_direction = -1
                     elif event.key == key_bindings.get("move_right", pygame.K_RIGHT):
                         game.move(1)
+                        # DAS/ARRタイマーを初期化
+                        das_timer = 0
+                        arr_timer = 0
+                        last_move_direction = 1
 
                     # 時計回りの回転
                     elif event.key == key_bindings.get("rotate_cw", pygame.K_UP):
@@ -134,6 +166,9 @@ def main():
                     settings_scroll_offset = max(min(settings_scroll_offset, 0), -400)
 
             elif event.type == pygame.KEYUP:
+                # キー状態を記録
+                keys_held[event.key] = False
+
                 # ソフトドロップの解除
                 if game_state == "game" and game:
                     if event.key == config.settings.get("key_bindings", {}).get(
@@ -153,13 +188,59 @@ def main():
                     settings_scroll_offset -= 30 * config.scale_factor
                     settings_scroll_offset = max(settings_scroll_offset, -400)
 
-        # キー長押し処理（ソフトドロップ）
-        keys = pygame.key.get_pressed()
+        # DAS/ARR処理（修正版）
         if game_state == "game" and game:
+            # ソフトドロップ
             soft_drop_key = config.settings.get("key_bindings", {}).get(
                 "soft_drop", pygame.K_DOWN
             )
-            game.soft_drop = keys[soft_drop_key]
+            game.soft_drop = keys_held.get(soft_drop_key, False)
+
+            # DAS/ARR処理
+            move_left_key = config.settings.get("key_bindings", {}).get(
+                "move_left", pygame.K_LEFT
+            )
+            move_right_key = config.settings.get("key_bindings", {}).get(
+                "move_right", pygame.K_RIGHT
+            )
+
+            left_pressed = keys_held.get(move_left_key, False)
+            right_pressed = keys_held.get(move_right_key, False)
+
+            # 現在の方向を決定
+            current_direction = 0
+
+            if left_pressed and right_pressed:
+                # 同時押し時は何もしない（ニュートラル）
+                current_direction = 0
+            elif left_pressed:
+                current_direction = -1
+            elif right_pressed:
+                current_direction = 1
+
+            if current_direction != 0:
+                # 方向が変わった場合のみタイマーリセット
+                if last_move_direction != current_direction:
+                    das_timer = 0
+                    arr_timer = 0
+                    last_move_direction = current_direction
+
+                # DASタイマーを進める
+                das_timer += dt
+
+                # DAS完了後の高速移動
+                if das_timer >= das_delay:
+                    arr_timer += dt
+
+                    # ARRの間隔で移動
+                    if arr_timer >= arr_delay:
+                        game.move(current_direction)
+                        arr_timer = 0
+            else:
+                # キーが押されていない場合はリセット
+                das_timer = 0
+                arr_timer = 0
+                last_move_direction = 0
 
         # 画面の描画
         if game_state == "menu":
@@ -217,8 +298,11 @@ def main():
                             game_state = "settings"
                             settings_scroll_offset = 0
                         elif action == "theme":
-                            # テーマの切り替え
-                            config.cycle_theme()
+                            # テーマの切り替えと即時反映
+                            new_theme = config.cycle_theme()
+                            print(f"テーマ変更: {new_theme}")
+                            # 画面を即座に再描画（次のフレームで反映）
+                            config.need_redraw_menus = True
                         elif action == "high_scores":
                             # ハイスコア画面へ
                             game_state = "high_scores"
@@ -228,201 +312,166 @@ def main():
                             sys.exit()
 
         elif game_state == "game":
-            # ゲームの更新
-            game.update(dt)
 
-            # ゲーム画面の描画
-            buttons = game.draw(screen)
+            if game:
+                # ゲームの更新
+                game.update(dt)
 
-            # ゲームオーバーまたはゲームクリア時のボタン処理
-            if buttons and mouse_clicked:
-                for button in buttons:
-                    if button.rect.collidepoint(mouse_pos):
-                        action = button.action
-                        if action == "retry":
-                            # リトライ
-                            from game import Tetris
+                # ゲーム画面の描画
+                buttons = game.draw(screen)
 
-                            game_mode = game.game_mode
-                            game = Tetris(game_mode=game_mode)
-                        elif action == "menu":
-                            # メニューに戻る
-                            game_state = "menu"
+                # ゲームオーバーまたはゲームクリア時のボタン処理
+                if buttons and mouse_clicked:
+                    for button in buttons:
+                        if button.rect.collidepoint(mouse_pos):
+                            if button.action == "retry":
+                                # リトライ
+                                game_mode = config.settings.get("game_mode", "marathon")
+                                game = Tetris(game_mode=game_mode)
+                            elif button.action == "menu":
+                                # メニューに戻る
+                                if config.has_music:
+                                    pygame.mixer.music.stop()
+                                game_state = "menu"
+                                game = None
 
         elif game_state == "pause":
-            # ゲーム画面を描画
-            game.draw(screen)
+            if game:
+                # ポーズメニューの描画
+                buttons = game.draw_pause_menu(screen)
 
-            # ポーズメニューの描画
-            from ui import draw_pause_menu
-
-            buttons = draw_pause_menu(screen)
-
-            # ボタンのクリック処理
-            if mouse_clicked:
-                for button in buttons:
-                    if button.rect.collidepoint(mouse_pos):
-                        action = button.action
-                        if action == "resume":
-                            # ゲーム再開時にBGMも再開
-                            game_state = "game"
-                            if config.has_music and config.settings.get("music", True):
-                                pygame.mixer.music.unpause()
-                        elif action == "theme":
-                            # テーマの切り替え
-                            config.cycle_theme()
-                        elif action == "fullscreen":
-                            # フルスクリーン切り替え
-                            screen = config.toggle_fullscreen()
-                            # 存在する場合は、ゲームオブジェクトも更新
-                            if game:
-                                game.update_screen_values(
-                                    config.screen_width,
-                                    config.screen_height,
-                                    config.grid_x,
-                                    config.grid_y,
-                                    config.scale_factor,
-                                )
-
-                        elif action == "quit":
-                            # メニューに戻る際にBGMを停止
-                            if config.has_music:
-                                pygame.mixer.music.stop()
-                            game_state = "menu"
+                # ボタンのクリック処理
+                if mouse_clicked:
+                    for button in buttons:
+                        if button.rect.collidepoint(mouse_pos):
+                            if button.action == "resume":
+                                game_state = "game"
+                            elif button.action == "theme":
+                                new_theme = config.cycle_theme()
+                                print(f"ポーズメニューでテーマ変更: {new_theme}")
+                                # ゲーム画面も即座に更新
+                                if game:
+                                    # ゲーム内のパーティクルシステムのテーマも更新
+                                    game.particle_system.set_effect_type(
+                                        config.settings.get("effect_type", "default")
+                                    )
+                            elif button.action == "fullscreen":
+                                screen = config.toggle_fullscreen()
+                            elif button.action == "quit":
+                                if config.has_music:
+                                    pygame.mixer.music.stop()
+                                game_state = "menu"
+                                game = None
 
         elif game_state == "high_scores":
-            # ハイスコア画面の描画
-            from ui import draw_high_scores
-            from game import Tetris
+            from ui import draw_high_scores_screen
 
-            buttons = draw_high_scores(screen, game if game else Tetris())
+            buttons = draw_high_scores_screen(screen)
 
             # ボタンのクリック処理
             if mouse_clicked:
                 for button in buttons:
                     if button.rect.collidepoint(mouse_pos):
-                        action = button.action
-                        if action == "back":
-                            # メニューに戻る
+                        if button.action == "back":
                             game_state = "menu"
-                        # モード切替のクリック処理
-                        elif action in ["marathon", "sprint", "ultra"]:
-                            if game:
-                                game.game_mode = action
-                            else:
-                                game = Tetris(game_mode=action)
 
         elif game_state == "settings":
-            # 設定画面の描画
-            from ui import draw_settings_menu
+            from ui import draw_settings_screen
 
-            buttons = draw_settings_menu(screen, settings_scroll_offset)
+            buttons = draw_settings_screen(screen, settings_scroll_offset)
 
             # ボタンのクリック処理
             if mouse_clicked:
                 for button in buttons:
                     if button.rect.collidepoint(mouse_pos):
                         action = button.action
-                        if action == "back":
-                            # メニューに戻る
-                            game_state = "menu"
-                        elif action == "effects":
-                            # エフェクト切替
-                            config.settings["effects"] = not config.settings.get(
-                                "effects", True
-                            )
-                            config.save_settings(config.settings)
-                        elif action == "effect_type":
-                            # エフェクトタイプ切替
-                            effect_types = ["default", "explosion", "rain", "spiral"]
-                            current_type = config.settings.get("effect_type", "default")
-                            next_index = (effect_types.index(current_type) + 1) % len(
-                                effect_types
-                            )
-                            config.settings["effect_type"] = effect_types[next_index]
-                            config.save_settings(config.settings)
-                            # 現在のゲームにも反映
-                            if game:
-                                game.particle_system.set_effect_type(
-                                    config.settings["effect_type"]
-                                )
-                        elif action == "music":
-                            # 音楽切替
-                            config.settings["music"] = not config.settings.get(
-                                "music", True
-                            )
-                            config.save_settings(config.settings)
-                            # 音楽の再生/停止
-                            if config.has_music:
-                                if config.settings["music"]:
-                                    pygame.mixer.music.play(-1)
-                                else:
-                                    pygame.mixer.music.stop()
 
-                        # 設定メニューの処理部分に追加
-                        elif action == "select_bgm":
-                            # BGM選択画面へ
+                        if action == "back":
+                            game_state = "menu"
+                        elif action == "bgm_selection":
+                            # BGM選択画面を実行
                             import bgm_manager
 
                             bgm_manager.run_bgm_selection(screen)
-                            game_state = "settings"  # 設定メニューに戻る
-
-                        elif action == "sound":
-                            # 効果音切替
-                            config.settings["sound"] = not config.settings.get(
-                                "sound", True
-                            )
-                            config.save_settings(config.settings)
-                        elif action == "ghost_piece":
-                            # ゴーストピース切替
-                            config.settings["ghost_piece"] = not config.settings.get(
-                                "ghost_piece", True
-                            )
-                            config.save_settings(config.settings)
-                        # 既存の設定メニュー処理部分に追加
                         elif action == "key_config":
-                            # キー設定画面に移動
-                            key_config.load_key_settings()  # 現在の設定を読み込み
+                            # キー設定画面を実行
                             key_config.run_key_config(screen)
-                            game_state = "settings"  # 設定メニューに戻る
-                        elif action == "reset_high_scores":
-                            # ハイスコアをリセット
-                            reset_high_scores()
-                            # ハイスコア画面に戻る
-                            game_state = "high_scores"
-                        elif action == "reset_settings":
-                            # 設定をリセット
-                            config.reset_settings()
-                            # 設定画面に戻る
-                            game_state = "settings"
-                        elif action == "reset_key_settings":
-                            # キー設定をリセット
-                            key_config.reset_key_settings()
-                            # 設定画面に戻る
-                            game_state = "settings"
-                        elif action == "reset_all":
-                            # 設定、ハイスコア、キー設定をリセット
-                            reset_high_scores()
-                            config.reset_settings()
-                            key_config.reset_key_settings()
-                            # メニューに戻
-                        elif action == "fullscreen":
-                            # フルスクリーン切替して返された新しいスクリーンを使用
-                            screen = config.toggle_fullscreen()
-
-                            # 存在する場合は、ゲームオブジェクトも更新
-                            if game:
-                                game.update_screen_values(
-                                    config.screen_width,
-                                    config.screen_height,
-                                    config.grid_x,
-                                    config.grid_y,
-                                    config.scale_factor,
+                        elif action.startswith("toggle_"):
+                            # 設定のトグル
+                            setting_key = action[7:]  # "toggle_"を除去
+                            if setting_key in config.settings:
+                                config.settings[setting_key] = not config.settings[
+                                    setting_key
+                                ]
+                                config.save_settings(config.settings)
+                        elif action.startswith("cycle_"):
+                            # 設定の循環
+                            setting_key = action[6:]  # "cycle_"を除去
+                            if setting_key == "theme":
+                                new_theme = config.cycle_theme()
+                                print(f"設定画面でテーマ変更: {new_theme}")
+                                # 設定画面を即座に再描画
+                                config.need_redraw_menus = True
+                            elif setting_key == "effect_type":
+                                # エフェクトタイプの循環
+                                effect_types = [
+                                    "default",
+                                    "explosion",
+                                    "rain",
+                                    "spiral",
+                                ]
+                                current_type = config.settings.get(
+                                    "effect_type", "default"
                                 )
+                                next_index = (
+                                    effect_types.index(current_type) + 1
+                                ) % len(effect_types)
+                                config.settings["effect_type"] = effect_types[
+                                    next_index
+                                ]
+                                config.save_settings(config.settings)
+
+        elif game_state == "bgm_selection":
+            import bgm_manager
+
+            buttons, total_height, visible_height = bgm_manager.draw_bgm_selection(
+                screen, bgm_scroll_offset
+            )
+
+            # ボタンのクリック処理
+            if mouse_clicked:
+                for button in buttons:
+                    if button.rect.collidepoint(mouse_pos):
+                        if button.action == "back":
+                            game_state = "settings"
+                        elif button.action == "preview":
+                            # プレビュー再生/停止
+                            if pygame.mixer.music.get_busy():
+                                bgm_manager.stop_bgm()
+                            else:
+                                bgm_manager.play_bgm()
+                        elif button.action.startswith("bgm:"):
+                            # BGM選択
+                            bgm_file = button.action[4:]  # "bgm:"を除いた部分
+                            bgm_manager.change_bgm(bgm_file)
+                            # プレビュー再生
+                            bgm_manager.play_bgm()
 
         # 画面の更新
         pygame.display.flip()
 
+    # ゲーム終了時の処理
+    pygame.quit()
+    sys.exit()
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"エラーが発生しました: {e}")
+        import traceback
+
+        traceback.print_exc()
+        pygame.quit()
+        sys.exit()

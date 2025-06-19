@@ -25,19 +25,15 @@ class Button:
         self.clicked = False
         self.icon = icon
 
-        # デフォルトカラーをテーマから取得
-        if bg_color is None:
-            self.bg_color = config.theme["button"]
-            self.hover_color = config.theme["button_hover"]
-        else:
-            self.bg_color = bg_color
-            # ホバー色は背景色より少し明るく
-            r = min(255, bg_color[0] + 20)
-            g = min(255, bg_color[1] + 20)
-            b = min(255, bg_color[2] + 20)
-            self.hover_color = (r, g, b)
+        # 修正前：初期化時に色を固定
+        # if bg_color is None:
+        #     self.bg_color = config.theme["button"]
+        #     self.hover_color = config.theme["button_hover"]
 
-        self.text_color = text_color if text_color else config.theme["button_text"]
+        # 修正後：色を動的に参照するためのフラグを設定
+        self.use_theme_colors = bg_color is None
+        self.custom_bg_color = bg_color
+        self.custom_text_color = text_color
 
         # VSCode風のボタンスタイル
         self.border_radius = int(4 * config.scale_factor)
@@ -45,9 +41,36 @@ class Button:
         self.shadow_color = (20, 20, 20, 100)
         self.active_border_color = (0, 122, 204)  # VSCodeのアクティブ色
 
+    # 修正箇所：updateメソッドを追加
     def update(self, mouse_pos):
         # ホバー状態の更新
         self.hovered = self.rect.collidepoint(mouse_pos)
+
+    # 修正箇所：色を動的に取得するプロパティを追加
+    @property
+    def bg_color(self):
+        if self.use_theme_colors:
+            return config.theme["button"]
+        else:
+            return self.custom_bg_color
+
+    @property
+    def hover_color(self):
+        if self.use_theme_colors:
+            return config.theme["button_hover"]
+        else:
+            # カスタム色の場合は少し明るく
+            r = min(255, self.custom_bg_color[0] + 20)
+            g = min(255, self.custom_bg_color[1] + 20)
+            b = min(255, self.custom_bg_color[2] + 20)
+            return (r, g, b)
+
+    @property
+    def text_color(self):
+        if self.custom_text_color:
+            return self.custom_text_color
+        else:
+            return config.theme["button_text"]
 
     def draw(self, surface):
         # 影の描画
@@ -61,7 +84,7 @@ class Button:
             surface, self.shadow_color, shadow_rect, border_radius=self.border_radius
         )
 
-        # ボタン本体の描画
+        # ボタン本体の描画（動的に色を取得）
         color = self.hover_color if self.hovered else self.bg_color
         pygame.draw.rect(surface, color, self.rect, border_radius=self.border_radius)
 
@@ -71,7 +94,7 @@ class Button:
             surface, border_color, self.rect, width=1, border_radius=self.border_radius
         )
 
-        # テキストの描画
+        # テキストの描画（動的に色を取得）
         if self.text:
             text_surf = config.font.render(self.text, True, self.text_color)
             text_rect = text_surf.get_rect(center=self.rect.center)

@@ -8,6 +8,42 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
+
+try:
+    from ui import Button
+except ImportError:
+    # ui.pyが利用できない場合のフォールバック
+    class Button:
+        def __init__(
+            self, x, y, width, height, text, action=None, bg_color=None, text_color=None
+        ):
+            self.rect = pygame.Rect(x, y, width, height)
+            self.text = text
+            self.action = action
+            self.bg_color = bg_color or (60, 60, 60)
+            self.text_color = text_color or (255, 255, 255)
+            self.hovered = False
+
+        def update(self, mouse_pos):
+            self.hovered = self.rect.collidepoint(mouse_pos)
+
+        def draw(self, screen):
+            color = (80, 80, 80) if self.hovered else self.bg_color
+            pygame.draw.rect(screen, color, self.rect)
+            pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
+
+            try:
+                import config
+
+                text_surf = config.font.render(self.text, True, self.text_color)
+            except:
+                fallback_font = pygame.font.Font(None, 24)
+                text_surf = fallback_font.render(self.text, True, self.text_color)
+
+            text_rect = text_surf.get_rect(center=self.rect.center)
+            screen.blit(text_surf, text_rect)
+
+
 # キー名と表示名のマッピング
 KEY_NAMES = {
     "move_left": "左に移動",
@@ -112,9 +148,6 @@ def draw_key_config_screen(screen, current_key=None):
 
         button_text = f"{display_name}: {key_display}"
 
-        # ボタン生成
-        from ui import Button  # 既存のButtonクラスを使用
-
         key_button = Button(
             panel_x + 40 * config.scale_factor,
             y_pos,
@@ -178,9 +211,34 @@ def wait_for_key_press(screen, key_name):
 
 # 設定の保存
 def save_key_settings():
+    # キー設定の値を検証
+    key_bindings = config.settings["key_bindings"]
+    validated_bindings = {}
+
+    for key_name, key_value in key_bindings.items():
+        # 異常値の検出
+        if key_value < 0 or key_value > 512:
+            print(f"警告: {key_name}の値が異常です: {key_value}")
+            # デフォルト値に戻す
+            default_keys = {
+                "move_left": pygame.K_LEFT,
+                "move_right": pygame.K_RIGHT,
+                "rotate_cw": pygame.K_UP,
+                "rotate_ccw": pygame.K_z,
+                "soft_drop": pygame.K_DOWN,
+                "hard_drop": pygame.K_SPACE,
+                "hold": pygame.K_c,
+                "pause": pygame.K_p,
+            }
+            validated_bindings[key_name] = default_keys.get(key_name, pygame.K_UNKNOWN)
+        else:
+            validated_bindings[key_name] = key_value
+
+    # 検証済みの設定で更新
+    config.settings["key_bindings"] = validated_bindings
+
     with open("saves/key_settings.json", "w") as f:
-        # キー設定部分だけを抽出して保存
-        key_data = {"key_bindings": config.settings["key_bindings"]}
+        key_data = {"key_bindings": validated_bindings}
         json.dump(key_data, f)
 
     # 通常の設定ファイルにも保存

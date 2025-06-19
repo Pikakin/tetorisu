@@ -1,0 +1,16 @@
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+find . -type f -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.html" -o -name "*.css" -o -name "*.json" -o -name "*.md" | head -20`
+
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/tetorisu.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+# 設定ファイルを削除（コマンドライン）`
+rm saves/settings.json`
+rm saves/key_settings.json`
+
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py

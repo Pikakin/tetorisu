@@ -2,12 +2,50 @@ import pygame
 import random
 import uuid
 from datetime import datetime
+import config
 from config import GRID_WIDTH, GRID_HEIGHT, BLOCK_SIZE, grid_x, grid_y, theme, settings
 from config import scale_factor, font, small_font, big_font, title_font
 from config import move_sound, rotate_sound, drop_sound, clear_sound, tetris_sound
 from config import level_up_sound, hold_sound, game_over_sound, has_sound, has_music
 from particles import ParticleSystem, FloatingText
 from utils import load_high_scores, save_high_scores
+
+
+try:
+    from ui import Button
+except ImportError:
+    # ui.pyが利用できない場合のフォールバック
+    class Button:
+        def __init__(
+            self, x, y, width, height, text, action=None, bg_color=None, text_color=None
+        ):
+            self.rect = pygame.Rect(x, y, width, height)
+            self.text = text
+            self.action = action
+            self.bg_color = bg_color or (60, 60, 60)
+            self.text_color = text_color or (255, 255, 255)
+            self.hovered = False
+
+        def update(self, mouse_pos):
+            self.hovered = self.rect.collidepoint(mouse_pos)
+
+        def draw(self, screen):
+            color = (80, 80, 80) if self.hovered else self.bg_color
+            pygame.draw.rect(screen, color, self.rect)
+            pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
+
+            # フォントを安全に取得
+            try:
+                from config import font
+
+                text_surf = font.render(self.text, True, self.text_color)
+            except:
+                fallback_font = pygame.font.Font(None, 24)
+                text_surf = fallback_font.render(self.text, True, self.text_color)
+
+            text_rect = text_surf.get_rect(center=self.rect.center)
+            screen.blit(text_surf, text_rect)
+
 
 # テトロミノ形状の定義
 TETROMINOS = [
@@ -116,10 +154,20 @@ class Tetris:
         self.high_scores = load_high_scores().get(game_mode, [])
 
         # DAS/ARR設定
-        self.das_delay = settings.get("das", 0.17)  # 秒
-        self.arr_delay = settings.get("arr", 0.03)  # 秒
+        self.das_delay = settings.get("das", 0.167)  # 秒
+        self.arr_delay = settings.get("arr", 0.033)  # 秒
         self.das_timer = 0
         self.arr_timer = 0
+
+        # キー状態管理
+        self.prev_left_pressed = False
+        self.prev_right_pressed = False
+        self.left_key_time = 0  # 左キーが押されている時間
+        self.right_key_time = 0  # 右キーが押されている時間
+        self.last_key_pressed = None  # 最後に押されたキー
+        self.das_charged = False  # DAS充電完了フラグ
+        self.initial_move_done = False  # 初回移動完了フラグ
+        self.current_direction = 0  # ★この行を追加
 
         # T-Spinフラグ
         self.is_tspin = False
@@ -173,6 +221,35 @@ class Tetris:
         # T-Spinフラグをリセット
         self.is_tspin = False
 
+        # BGMの再開処理を追加
+        try:
+            if (
+                hasattr(config, "has_music")
+                and config.has_music
+                and hasattr(config, "settings")
+                and config.settings.get("music", True)
+            ):
+                # BGMが停止している場合は再開
+                if not pygame.mixer.music.get_busy():
+                    # bgm_managerを使用してBGMを再生
+                    import bgm_manager
+
+                    bgm_manager.play_bgm()
+        except Exception as e:
+            print(f"BGM再開処理でエラーが発生しました: {e}")
+
+        # キー状態をリセット
+        self.das_timer = 0
+        self.arr_timer = 0
+        self.prev_left_pressed = False
+        self.prev_right_pressed = False
+        self.left_key_time = 0
+        self.right_key_time = 0
+        self.last_key_pressed = None
+        self.das_charged = False
+        self.initial_move_done = False
+        self.current_direction = 0  # ★この行を追加
+
     def refill_piece_bag(self):
         """7種類のミノを1セットとしてシャッフルし、バッグに追加する"""
         new_bag = list(range(len(TETROMINOS)))
@@ -190,13 +267,29 @@ class Tetris:
 
         piece = {
             "shape": [row[:] for row in TETROMINOS[piece_index]["shape"]],
-            "color": theme["blocks"][TETROMINOS[piece_index]["color"]],
+            "color": config.theme["blocks"][
+                TETROMINOS[piece_index]["color"]
+            ],  # 動的テーマ色
             "x": GRID_WIDTH // 2 - len(TETROMINOS[piece_index]["shape"][0]) // 2,
             "y": 0,
             "rotation": 0,
             "index": piece_index,
         }
         return piece
+
+    # 修正箇所：新しいメソッドを追加
+    def update_piece_colors(self):
+        """既存のピースの色をテーマに合わせて更新"""
+        if self.current_piece:
+            self.current_piece["color"] = config.theme["blocks"][
+                self.current_piece["index"]
+            ]
+
+        if self.held_piece:
+            self.held_piece["color"] = config.theme["blocks"][self.held_piece["index"]]
+
+        for piece in self.next_pieces:
+            piece["color"] = config.theme["blocks"][piece["index"]]
 
     def get_ghost_piece(self):
         if not self.current_piece or not settings.get("ghost_piece", True):
@@ -334,6 +427,10 @@ class Tetris:
             if self.current_piece["index"] == 2:  # T型
                 self.check_tspin()
 
+            # 回転後に接地していない場合はロックディレイをリセット
+            if self.valid_move(self.current_piece, y_offset=1):
+                self.lock_delay = 0
+
             # ゴーストピースの更新
             self.ghost_piece = self.get_ghost_piece()
             return
@@ -434,7 +531,12 @@ class Tetris:
         self.paused = not self.paused
 
         # BGMの一時停止/再開
-        if config.has_music and config.settings.get("music", True):
+        if (
+            hasattr(config, "has_music")
+            and config.has_music
+            and hasattr(config, "settings")
+            and config.settings.get("music", True)
+        ):
             if self.paused:
                 pygame.mixer.music.pause()
             else:
@@ -449,6 +551,10 @@ class Tetris:
             self.current_piece["x"] += direction
             # ゴーストピースの更新
             self.ghost_piece = self.get_ghost_piece()
+
+            # 移動後に接地していない場合はロックディレイをリセット
+            if self.valid_move(self.current_piece, y_offset=1):
+                self.lock_delay = 0
 
             # 効果音
             if move_sound and has_sound and settings.get("sound", True):
@@ -557,6 +663,9 @@ class Tetris:
                         # ブロック配置エフェクト（設定がONの場合）
                         if settings.get("effects", True):
                             # パーティクルエフェクト
+                            # 現在のグローバル変数を取得
+                            from config import grid_x, grid_y, scale_factor
+
                             # 画面上の実際の座標を計算
                             block_screen_x = (
                                 grid_x + block_grid_x * BLOCK_SIZE * scale_factor
@@ -564,7 +673,6 @@ class Tetris:
                             block_screen_y = (
                                 grid_y + block_grid_y * BLOCK_SIZE * scale_factor
                             )
-
                             # ブロックの中心にエフェクトを配置
                             self.particle_system.create_explosion(
                                 block_screen_x + (BLOCK_SIZE * scale_factor / 2),
@@ -597,14 +705,19 @@ class Tetris:
         if not self.valid_move(self.current_piece):
             self.game_over = True
             # ゲームオーバー時にBGMを停止
-            if config.has_music:
-                pygame.mixer.music.stop()
-            if (
-                game_over_sound
-                and config.has_sound
-                and config.settings.get("sound", True)
-            ):
-                game_over_sound.play()
+            try:
+                if hasattr(config, "has_music") and config.has_music:
+                    pygame.mixer.music.stop()
+                if (
+                    game_over_sound
+                    and hasattr(config, "has_sound")
+                    and config.has_sound
+                    and hasattr(config, "settings")
+                    and config.settings.get("sound", True)
+                ):
+                    game_over_sound.play()
+            except Exception as e:
+                print(f"ゲームオーバー処理でエラーが発生しました: {e}")
 
     def check_lines(self):
         """完成したラインをチェックして消去する"""
@@ -660,9 +773,12 @@ class Tetris:
             self.score += combo_bonus
             # コンボテキスト表示
             combo_text = f"{self.combo} Combo!"
+            # グローバル変数を正しく参照
+            import config
+
             self.add_floating_text(
-                grid_x + (GRID_WIDTH * BLOCK_SIZE * scale_factor) // 2,
-                grid_y + (GRID_HEIGHT * BLOCK_SIZE * scale_factor) // 2,
+                config.grid_x + (GRID_WIDTH * BLOCK_SIZE * config.scale_factor) // 2,
+                config.grid_y + (GRID_HEIGHT * BLOCK_SIZE * config.scale_factor) // 2,
                 combo_text,
                 (255, 255, 0),
                 36,
@@ -671,9 +787,14 @@ class Tetris:
         # ライン消去テキスト表示
         if lines_count > 0:
             clear_text = f"{tspin_text}{line_text}"
+            # グローバル変数を正しく参照
+            import config
+
             self.add_floating_text(
-                grid_x + (GRID_WIDTH * BLOCK_SIZE * scale_factor) // 2,
-                grid_y + (GRID_HEIGHT * BLOCK_SIZE * scale_factor) // 2 - 40,
+                config.grid_x + (GRID_WIDTH * BLOCK_SIZE * config.scale_factor) // 2,
+                config.grid_y
+                + (GRID_HEIGHT * BLOCK_SIZE * config.scale_factor) // 2
+                - 40,
                 clear_text,
                 (255, 255, 0),
                 36,
@@ -685,9 +806,13 @@ class Tetris:
         self.level = self.lines_cleared // 10 + 1
         if self.level > old_level:
             # レベルアップテキスト表示
+            import config
+
             self.add_floating_text(
-                grid_x + (GRID_WIDTH * BLOCK_SIZE * scale_factor) // 2,
-                grid_y + (GRID_HEIGHT * BLOCK_SIZE * scale_factor) // 2 - 80,
+                config.grid_x + (GRID_WIDTH * BLOCK_SIZE * config.scale_factor) // 2,
+                config.grid_y
+                + (GRID_HEIGHT * BLOCK_SIZE * config.scale_factor) // 2
+                - 80,
                 f"Level Up! {self.level}",
                 (255, 255, 0),
                 36,
@@ -704,11 +829,13 @@ class Tetris:
 
         # パーティクルエフェクト
         if settings.get("effects", True):
+            import config
+
             for y in lines_to_clear:
                 # ライン全体にエフェクトを追加
                 self.particle_system.create_line_clear_effect(
-                    grid_x,
-                    grid_y + (y + 0.5) * BLOCK_SIZE * scale_factor,
+                    config.grid_x,
+                    config.grid_y + (y + 0.5) * BLOCK_SIZE * config.scale_factor,
                     (255, 255, 255),  # 白色のパーティクル
                     30,  # パーティクル数
                 )
@@ -717,8 +844,10 @@ class Tetris:
                 for x in range(GRID_WIDTH):
                     if self.grid[y][x]:
                         self.particle_system.create_explosion(
-                            grid_x + (x + 0.5) * BLOCK_SIZE * scale_factor,
-                            grid_y + (y + 0.5) * BLOCK_SIZE * scale_factor,
+                            config.grid_x
+                            + (x + 0.5) * BLOCK_SIZE * config.scale_factor,
+                            config.grid_y
+                            + (y + 0.5) * BLOCK_SIZE * config.scale_factor,
                             self.grid[y][x],
                             15,
                         )
@@ -773,44 +902,31 @@ class Tetris:
                 self.lock_delay = 0
             else:
                 # 接地している場合、ロックディレイを増加
-                self.lock_delay += dt
+                self.lock_delay += fall_speed  # dtではなくfall_speedを使用
                 if self.lock_delay >= self.max_lock_delay:
                     self.lock_piece()
 
-        # キー長押し処理（DAS/ARR）
-        keys = pygame.key.get_pressed()
-        # キー設定から移動キーを取得
-        move_left_key = settings.get("key_bindings", {}).get("move_left", pygame.K_LEFT)
-        move_right_key = settings.get("key_bindings", {}).get(
-            "move_right", pygame.K_RIGHT
-        )
+        # 接地状態でもロックディレイを進める（移動やローテーション後の処理用）
+        elif not self.valid_move(self.current_piece, y_offset=1):
+            self.lock_delay += dt
+            if self.lock_delay >= self.max_lock_delay:
+                self.lock_piece()
 
-        if keys[move_left_key] or keys[move_right_key]:
-            direction = -1 if keys[move_left_key] else 1
-
-            # DASタイマーの更新
-            if self.das_timer < self.das_delay:
-                self.das_timer += dt
-            else:
-                # ARRタイマーの更新
-                self.arr_timer += dt
-                while self.arr_timer >= self.arr_delay:
-                    self.move(direction)
-                    self.arr_timer -= self.arr_delay
-        else:
-            # キーが押されていない場合はタイマーをリセット
-            self.das_timer = 0
-            self.arr_timer = 0
+        # DAS/ARR処理（長押し時の高速移動）
+        # DAS/ARR処理はmain.pyで実装
 
     def draw(self, screen):
         """ゲーム画面を描画する"""
+        # 現在のグローバル変数を取得
+        from config import grid_x, grid_y, scale_factor
+
         # 背景
-        screen.fill(theme["background"])
+        screen.fill(config.theme["background"])  # 動的テーマ参照
 
         # グリッド背景
         pygame.draw.rect(
             screen,
-            theme["grid_bg"],
+            config.theme["grid_bg"],  # 動的テーマ参照
             (
                 grid_x,
                 grid_y,
@@ -823,7 +939,7 @@ class Tetris:
         for x in range(GRID_WIDTH + 1):
             pygame.draw.line(
                 screen,
-                theme["grid_line"],
+                config.theme["grid_line"],  # 動的テーマ参照
                 (
                     grid_x + x * BLOCK_SIZE * scale_factor,
                     grid_y,
@@ -838,7 +954,7 @@ class Tetris:
         for y in range(GRID_HEIGHT + 1):
             pygame.draw.line(
                 screen,
-                theme["grid_line"],
+                config.theme["grid_line"],  # 動的テーマ参照
                 (
                     grid_x,
                     grid_y + y * BLOCK_SIZE * scale_factor,
@@ -1022,6 +1138,9 @@ class Tetris:
 
     def draw_block(self, screen, x, y, color):
         """ブロックを描画する"""
+        # 現在のグローバル変数を取得
+        from config import grid_x, grid_y, scale_factor
+
         block_rect = pygame.Rect(
             grid_x + x * BLOCK_SIZE * scale_factor,
             grid_y + y * BLOCK_SIZE * scale_factor,
@@ -1121,8 +1240,6 @@ class Tetris:
                 panel_y + 240 * scale_factor,
             ),
         )
-
-        from ui import Button
 
         # リトライボタン
         retry_button = Button(
@@ -1236,8 +1353,6 @@ class Tetris:
             ),
         )
 
-        from ui import Button
-
         # リトライボタン
         retry_button = Button(
             panel_x + panel_width // 2 - 100 * scale_factor,
@@ -1341,8 +1456,6 @@ class Tetris:
                 - search_text.get_height() / 2,
             ),
         )
-
-        from ui import Button
 
         # ボタンの作成（VSCode風のコマンドパレット項目）
         buttons = []
@@ -1488,17 +1601,16 @@ class Tetris:
         """フローティングテキストを追加する"""
         self.floating_texts.append(FloatingText(x, y, text, color, size, life))
 
+    def update_screen_values(
+        self, screen_width, screen_height, grid_x, grid_y, scale_factor
+    ):
+        """画面サイズ変更時に、ゲーム内部の値を更新する"""
+        # グローバル変数から直接参照せず、パラメータとして受け取った値を使用
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.grid_x = grid_x
+        self.grid_y = grid_y
+        self.scale_factor = scale_factor
 
-def update_screen_values(
-    self, screen_width, screen_height, grid_x, grid_y, scale_factor
-):
-    """画面サイズ変更時に、ゲーム内部の値を更新する"""
-    # グローバル変数から直接参照せず、パラメータとして受け取った値を使用
-    self.screen_width = screen_width
-    self.screen_height = screen_height
-    self.grid_x = grid_x
-    self.grid_y = grid_y
-    self.scale_factor = scale_factor
-
-    # ゴーストピースの更新
-    self.ghost_piece = self.get_ghost_piece()
+        # ゴーストピースの更新
+        self.ghost_piece = self.get_ghost_piece()

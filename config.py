@@ -389,7 +389,7 @@ def save_high_scores(high_scores):
 
 # テーマの切り替え
 def cycle_theme():
-    global current_theme, theme, settings
+    global current_theme, theme, settings, need_redraw_menus
 
     themes = list(THEMES.keys())
     current_index = themes.index(current_theme)
@@ -401,66 +401,111 @@ def cycle_theme():
     settings["theme"] = current_theme
     save_settings(settings)
 
+    # 再描画フラグを設定
+    need_redraw_menus = True
+
+    print(f"テーマを変更しました: {current_theme}")
+    return current_theme
+
+
+def apply_theme_change():
+    """テーマ変更を即座に適用する"""
+    global need_redraw_menus
+    need_redraw_menus = False
+    print(f"テーマ適用: {current_theme}")
+
 
 # フルスクリーン切り替え関数
 def toggle_fullscreen():
     global screen, fullscreen, FULLSCREEN, grid_x, grid_y, scale_factor
     global screen_width, screen_height
 
-    # 現在の状態を反転
-    fullscreen = not fullscreen
+    try:
+        # 現在の状態を反転
+        fullscreen = not fullscreen
 
-    # 現在のテーマを保存
-    current_theme_backup = current_theme
+        # ディスプレイ再初期化
+        pygame.display.quit()
+        pygame.display.init()
 
-    # ディスプレイ再初期化
-    pygame.display.quit()
-    pygame.display.init()
+        if fullscreen:
+            # フルスクリーンモードに切り替え
+            try:
+                desktop_sizes = pygame.display.get_desktop_sizes()
+                if desktop_sizes:
+                    screen_width, screen_height = desktop_sizes[0]
+                else:
+                    screen_width, screen_height = 1920, 1080
+            except:
+                # デスクトップサイズ取得に失敗した場合のフォールバック
+                screen_width, screen_height = 1920, 1080
 
-    if fullscreen:
-        # フルスクリーンモードに切り替え
-        desktop_sizes = pygame.display.get_desktop_sizes()
-        if desktop_sizes:
-            screen_width, screen_height = desktop_sizes[0]
+            try:
+                screen = pygame.display.set_mode(
+                    (screen_width, screen_height), pygame.FULLSCREEN
+                )
+            except pygame.error as e:
+                print(f"フルスクリーンモード設定に失敗: {e}")
+                # フルスクリーンに失敗した場合はウィンドウモードに戻す
+                fullscreen = False
+                screen_width = BASE_SCREEN_WIDTH
+                screen_height = BASE_SCREEN_HEIGHT
+                screen = pygame.display.set_mode((screen_width, screen_height))
+                scale_factor = 1.0
+
+            if fullscreen:
+                # スケール係数の計算
+                width_scale = screen_width / BASE_SCREEN_WIDTH
+                height_scale = screen_height / BASE_SCREEN_HEIGHT
+                scale_factor = min(width_scale, height_scale)
         else:
-            screen_width, screen_height = 1920, 1080
+            # ウィンドウモードに切り替え
+            screen_width = BASE_SCREEN_WIDTH
+            screen_height = BASE_SCREEN_HEIGHT
+            try:
+                screen = pygame.display.set_mode((screen_width, screen_height))
+                scale_factor = 1.0
+            except pygame.error as e:
+                print(f"ウィンドウモード設定に失敗: {e}")
+                return None
 
-        screen = pygame.display.set_mode(
-            (screen_width, screen_height), pygame.FULLSCREEN
-        )
+        # グリッド位置を再計算
+        grid_x = (screen_width - GRID_WIDTH * BLOCK_SIZE * scale_factor) // 2
+        grid_y = (screen_height - GRID_HEIGHT * BLOCK_SIZE * scale_factor) // 2
 
-        # スケール係数の計算
-        width_scale = screen_width / BASE_SCREEN_WIDTH
-        height_scale = screen_height / BASE_SCREEN_HEIGHT
-        scale_factor = min(width_scale, height_scale)
-    else:
-        # ウィンドウモードに切り替え - 必ず基本サイズに戻す
-        screen_width = BASE_SCREEN_WIDTH
-        screen_height = BASE_SCREEN_HEIGHT
-        screen = pygame.display.set_mode((screen_width, screen_height))
-        scale_factor = 1.0
+        # フォントの再初期化
+        try:
+            init_fonts()
+        except Exception as e:
+            print(f"フォント再初期化エラー: {e}")
 
-    # グリッド位置を再計算
-    grid_x = (screen_width - GRID_WIDTH * BLOCK_SIZE * scale_factor) // 2
-    grid_y = (screen_height - GRID_HEIGHT * BLOCK_SIZE * scale_factor) // 2
+        # 設定を更新
+        try:
+            settings["fullscreen"] = fullscreen
+            save_settings(settings)
+            FULLSCREEN = fullscreen
+        except Exception as e:
+            print(f"設定保存エラー: {e}")
 
-    # フォントの再初期化
-    init_fonts()
+        pygame.display.set_caption("テトリス")
+        return screen
 
-    # ゲーム関連の再初期化処理
-    if "game" in globals() and game is not None:
-        # ゲームのグリッド位置などを更新
-        game.update_screen_values(
-            screen_width, screen_height, grid_x, grid_y, scale_factor
-        )
-
-    # 設定を更新
-    settings["fullscreen"] = fullscreen
-    save_settings(settings)
-    FULLSCREEN = fullscreen
-
-    pygame.display.set_caption("テトリス")
-    return screen
+    except Exception as e:
+        print(f"フルスクリーン切り替えで予期しないエラー: {e}")
+        # エラー時は安全なウィンドウモードに戻す
+        try:
+            fullscreen = False
+            screen_width = BASE_SCREEN_WIDTH
+            screen_height = BASE_SCREEN_HEIGHT
+            screen = pygame.display.set_mode((screen_width, screen_height))
+            scale_factor = 1.0
+            grid_x = (screen_width - GRID_WIDTH * BLOCK_SIZE * scale_factor) // 2
+            grid_y = (screen_height - GRID_HEIGHT * BLOCK_SIZE * scale_factor) // 2
+            pygame.display.set_caption("テトリス")
+            return screen
+        except:
+            print("フルスクリーン切り替えの復旧に失敗しました")
+            return None
 
 
 # スクリーンの初期化

@@ -2,9 +2,39 @@ import os
 import pygame
 import json
 import config
+import sys
 
 # サポートする音楽ファイル形式
 SUPPORTED_FORMATS = [".mp3", ".ogg", ".wav"]
+
+
+try:
+    from ui import Button
+except ImportError:
+    # ui.pyが利用できない場合のフォールバック
+    class Button:
+        def __init__(
+            self, x, y, width, height, text, action=None, bg_color=None, text_color=None
+        ):
+            self.rect = pygame.Rect(x, y, width, height)
+            self.text = text
+            self.action = action
+            self.bg_color = bg_color or (60, 60, 60)
+            self.text_color = text_color or (255, 255, 255)
+            self.hovered = False
+
+        def update(self, mouse_pos):
+            self.hovered = self.rect.collidepoint(mouse_pos)
+
+        def draw(self, screen):
+            color = (80, 80, 80) if self.hovered else self.bg_color
+            pygame.draw.rect(screen, color, self.rect)
+            pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
+
+            font = pygame.font.Font(None, 24)
+            text_surf = font.render(self.text, True, self.text_color)
+            text_rect = text_surf.get_rect(center=self.rect.center)
+            screen.blit(text_surf, text_rect)
 
 
 # BGMを停止する関数
@@ -95,8 +125,6 @@ def get_first_available_bgm():
 
 # BGM選択画面を描画
 def draw_bgm_selection(screen, scroll_offset=0):
-    # 循環インポートを避けるため、ここでインポート
-    from ui import Button
 
     # 背景
     screen.fill(config.theme["background"])
