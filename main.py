@@ -376,9 +376,9 @@ def main():
                             game_state = "menu"
 
         elif game_state == "settings":
-            from ui import draw_settings_screen
+            from ui import draw_settings_menu
 
-            buttons = draw_settings_screen(screen, settings_scroll_offset)
+            buttons = draw_settings_menu(screen, settings_scroll_offset)
 
             # ボタンのクリック処理
             if mouse_clicked:

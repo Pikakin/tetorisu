@@ -22,3 +22,4 @@ git config user.name]
 git config user.name
 git config user.name Pikakin
 git config user.email moeirtanatana@gmail.com
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py

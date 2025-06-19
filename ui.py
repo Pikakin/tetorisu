@@ -821,7 +821,7 @@ def draw_settings_menu(screen, scroll_offset=0):
         button_width,
         50 * config.scale_factor,
         f"エフェクト: {effects_status}",
-        action="effects",
+        action="toggle_effects",  # 修正：actionを明確に指定
     )
 
     # エフェクトタイプ切替ボタン
@@ -839,7 +839,7 @@ def draw_settings_menu(screen, scroll_offset=0):
         button_width,
         50 * config.scale_factor,
         f"エフェクトタイプ: {effect_type_display}",
-        action="effect_type",
+        action="cycle_effect_type",  # 修正：actionを明確に指定
     )
 
     # 音楽切替ボタン
@@ -850,10 +850,10 @@ def draw_settings_menu(screen, scroll_offset=0):
         button_width,
         50 * config.scale_factor,
         f"音楽: {music_status}",
-        action="music",
+        action="toggle_music",  # 修正：actionを明確に指定
     )
 
-    # BGM選択ボタン（ここを追加）
+    # BGM選択ボタン
     bgm_name = os.path.splitext(
         config.settings.get("selected_bgm", "tetris_theme.mp3")
     )[0]
@@ -863,35 +863,35 @@ def draw_settings_menu(screen, scroll_offset=0):
         button_width,
         50 * config.scale_factor,
         f"BGM: {bgm_name}",
-        action="select_bgm",
+        action="bgm_selection",  # 修正：actionを明確に指定
     )
 
-    # 効果音切替ボタン（位置調整が必要）
+    # 効果音切替ボタン
     sound_status = "ON" if config.settings.get("sound", True) else "OFF"
     sound_button = Button(
         button_x,
-        base_y + button_spacing * 4,  # 番号を1つ増やす
+        base_y + button_spacing * 4,
         button_width,
         50 * config.scale_factor,
         f"効果音: {sound_status}",
-        action="sound",
+        action="toggle_sound",  # 修正：actionを明確に指定
     )
 
     # ゴーストピース切替ボタン
     ghost_status = "ON" if config.settings.get("ghost_piece", True) else "OFF"
     ghost_button = Button(
         button_x,
-        base_y + button_spacing * 4,
+        base_y + button_spacing * 5,  # 修正：位置を調整
         button_width,
         50 * config.scale_factor,
         f"ゴーストピース: {ghost_status}",
-        action="ghost_piece",
+        action="toggle_ghost_piece",  # 修正：actionを明確に指定
     )
 
     # キー設定ボタン
     key_config_button = Button(
         button_x,
-        base_y + button_spacing * 5,
+        base_y + button_spacing * 6,  # 修正：位置を調整
         button_width,
         50 * config.scale_factor,
         "キー設定",
@@ -901,11 +901,11 @@ def draw_settings_menu(screen, scroll_offset=0):
     # フルスクリーン切替ボタン
     fullscreen_button = Button(
         button_x,
-        base_y + button_spacing * 6,
+        base_y + button_spacing * 7,  # 修正：位置を調整
         button_width,
         50 * config.scale_factor,
         "フルスクリーン切替",
-        action="fullscreen",
+        action="toggle_fullscreen",  # 修正：actionを明確に指定
     )
 
     # 戻るボタン - 常に画面下部に固定
