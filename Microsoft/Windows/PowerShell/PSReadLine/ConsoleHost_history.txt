@@ -14,3 +14,11 @@ rm saves/key_settings.json`
 & C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
 & C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe
 & C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+git 
+git --config
+git --config user.name
+git config --global user.name Pikakin
+git config user.name]
+git config user.name
+git config user.name Pikakin
+git config user.email moeirtanatana@gmail.com
