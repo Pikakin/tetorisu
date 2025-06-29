@@ -169,8 +169,16 @@ class Tetris:
         self.initial_move_done = False  # 初回移動完了フラグ
         self.current_direction = 0  # ★この行を追加
 
-        # T-Spinフラグ
-        self.is_tspin = False
+        self.is_tspin = False  # 後方互換性のため維持
+        self.current_spin_type = None  # 現在のスピンタイプ
+        self.spin_count = {
+            "T-Spin": 0,
+            "I-Spin": 0,
+            "J-Spin": 0,
+            "L-Spin": 0,
+            "S-Spin": 0,
+            "Z-Spin": 0,
+        }
 
     def reset(self):
         # ゲームの状態を初期化
@@ -208,8 +216,16 @@ class Tetris:
         # 落下速度と時間変数
         self.fall_time = 0
         self.fall_speed = 0.8  # 初期落下速度（秒）
+        # 修正：本家準拠のロックディレイシステム
         self.lock_delay = 0
-        self.max_lock_delay = 0.5  # 接地からロックまでの最大時間（秒）
+        self.max_lock_delay = 0.5  # 基本ロックディレイ（本家準拠）
+        self.lock_delay_resets = 0  # ロックディレイリセット回数
+        self.max_lock_delay_resets = 15  # 最大リセット回数（本家準拠）
+        self.is_on_ground = False  # 接地状態フラグ
+        self.last_move_reset_lock = (
+            False  # 最後の移動でロックディレイがリセットされたか
+        )
+        self.has_ever_been_grounded = False  # 追加：一度でも接地したかのフラグ
 
         # ゲーム時間
         self.time_played = 0
@@ -220,6 +236,10 @@ class Tetris:
 
         # T-Spinフラグをリセット
         self.is_tspin = False
+        self.current_spin_type = None
+        
+        # オンライン対戦用
+        self.lines_cleared_this_frame = 0
 
         # BGMの再開処理を追加
         try:
@@ -333,6 +353,23 @@ class Tetris:
 
         return True
 
+    # 修正：接地状態をチェックする新しいメソッド
+    def is_piece_on_ground(self):
+        """現在のピースが接地しているかチェック"""
+        if not self.current_piece:
+            return False
+        return not self.valid_move(self.current_piece, y_offset=1)
+
+    # 修正：ロックディレイをリセットする新しいメソッド
+    def reset_lock_delay(self):
+        """ロックディレイをリセット（インフィニティシステム）"""
+        if self.is_on_ground and self.lock_delay_resets < self.max_lock_delay_resets:
+            self.lock_delay = 0
+            self.lock_delay_resets += 1
+            self.last_move_reset_lock = True
+            return True
+        return False
+
     def rotate(self, clockwise=True):
         if self.game_over or self.paused or not self.current_piece:
             return
@@ -423,13 +460,12 @@ class Tetris:
         # 壁や他のブロックとの衝突をチェック
         # まず基本的な位置で回転が可能かチェック
         if self.valid_move(self.current_piece):
-            # T-Spinチェック
-            if self.current_piece["index"] == 2:  # T型
-                self.check_tspin()
+            # 基本回転では通常スピンにならない（キックが必要）
+            self.current_spin_type = None
 
-            # 回転後に接地していない場合はロックディレイをリセット
-            if self.valid_move(self.current_piece, y_offset=1):
-                self.lock_delay = 0
+            # 修正：回転時のロックディレイリセット
+            if self.is_on_ground:
+                self.reset_lock_delay()
 
             # ゴーストピースの更新
             self.ghost_piece = self.get_ghost_piece()
@@ -451,9 +487,9 @@ class Tetris:
                 self.current_piece["x"] += kick_x
                 self.current_piece["y"] += kick_y
 
-                # T-Spinチェック
-                if self.current_piece["index"] == 2:  # T型
-                    self.check_tspin()
+                # キック成功時のみスピンチェック（キックによる回転がスピンの条件）
+                is_spin, spin_type = self.check_spin_after_kick(original_x, original_y, kick_x, kick_y)
+                self.current_spin_type = spin_type
 
                 # ゴーストピースの更新
                 self.ghost_piece = self.get_ghost_piece()
@@ -464,6 +500,8 @@ class Tetris:
         self.current_piece["rotation"] = original_rotation
         self.current_piece["x"] = original_x
         self.current_piece["y"] = original_y
+        # 回転失敗時はスピン状態をリセット
+        self.current_spin_type = None
 
     def rotate_matrix(self, matrix):
         """行列を時計回りに90度回転"""
@@ -489,16 +527,70 @@ class Tetris:
 
         return result
 
-    def check_tspin(self):
-        """T-Spinの条件をチェックする"""
-        if self.current_piece["index"] != 2:  # T型でない場合
+    def check_spin_after_kick(self, original_x, original_y, kick_x, kick_y):
+        """キック後のスピン判定をチェックする（キックが発生した場合のみスピンとする）"""
+        if not self.current_piece:
+            return False, None
+
+        piece_index = self.current_piece["index"]
+        
+        # S型とZ型のみキック時にスピン判定
+        if piece_index == 5:  # S型
+            return True, "S-Spin"
+        elif piece_index == 6:  # Z型
+            return True, "Z-Spin"
+        elif piece_index == 2:  # T型
+            # T型は従来の判定を使用
+            is_spin, spin_type = self.check_t_spin(self.current_piece["x"], self.current_piece["y"])
+            return is_spin, spin_type
+        elif piece_index == 0:  # I型
+            # I型も従来の判定を使用
+            is_spin, spin_type = self.check_i_spin(self.current_piece["x"], self.current_piece["y"])
+            return is_spin, spin_type
+        elif piece_index == 3:  # J型
+            is_spin, spin_type = self.check_j_spin(self.current_piece["x"], self.current_piece["y"])
+            return is_spin, spin_type
+        elif piece_index == 4:  # L型
+            is_spin, spin_type = self.check_l_spin(self.current_piece["x"], self.current_piece["y"])
+            return is_spin, spin_type
+        
+        return False, None
+
+    def check_spin(self):
+        """全テトロミノのスピン判定をチェックする"""
+        if not self.current_piece:
             self.is_tspin = False
-            return False
+            return False, None
 
-        # T-Spinの条件：T型の4隅のうち3つ以上が埋まっている
-        corners_filled = 0
-        t_x, t_y = self.current_piece["x"], self.current_piece["y"]
+        piece_index = self.current_piece["index"]
+        piece_x, piece_y = self.current_piece["x"], self.current_piece["y"]
 
+        # スピン判定結果
+        spin_type = None
+        is_spin = False
+
+        if piece_index == 0:  # I型
+            is_spin, spin_type = self.check_i_spin(piece_x, piece_y)
+        elif piece_index == 1:  # O型
+            is_spin, spin_type = self.check_o_spin(piece_x, piece_y)
+        elif piece_index == 2:  # T型
+            is_spin, spin_type = self.check_t_spin(piece_x, piece_y)
+        elif piece_index == 3:  # J型
+            is_spin, spin_type = self.check_j_spin(piece_x, piece_y)
+        elif piece_index == 4:  # L型
+            is_spin, spin_type = self.check_l_spin(piece_x, piece_y)
+        elif piece_index == 5:  # S型
+            is_spin, spin_type = self.check_s_spin(piece_x, piece_y)
+        elif piece_index == 6:  # Z型
+            is_spin, spin_type = self.check_z_spin(piece_x, piece_y)
+
+        # T-Spinフラグは後方互換性のため維持
+        self.is_tspin = piece_index == 2 and is_spin
+
+        return is_spin, spin_type
+
+    def check_t_spin(self, t_x, t_y):
+        """T-Spinの条件をチェックする"""
         # T型の中心座標
         center_x = t_x + 1
         center_y = t_y + 1
@@ -511,7 +603,7 @@ class Tetris:
             (center_x + 1, center_y + 1),  # 右下
         ]
 
-        # 各隅が埋まっているかチェック
+        corners_filled = 0
         for cx, cy in corners:
             if (
                 cx < 0
@@ -523,8 +615,177 @@ class Tetris:
                 corners_filled += 1
 
         # T-Spinの条件：3つ以上の隅が埋まっている
-        self.is_tspin = corners_filled >= 3
-        return self.is_tspin
+        is_spin = corners_filled >= 3
+        return is_spin, "T-Spin" if is_spin else None
+
+    def check_i_spin(self, i_x, i_y):
+        """I-Spinの条件をチェックする"""
+        rotation = self.current_piece["rotation"]
+
+        # I型は4x4グリッドの中心付近をチェック
+        if rotation % 2 == 0:  # 水平状態
+            center_x = i_x + 2
+            center_y = i_y + 1
+        else:  # 垂直状態
+            center_x = i_x + 1
+            center_y = i_y + 2
+
+        # I型の周囲8マスをチェック
+        surrounding_filled = 0
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0:
+                    continue
+                cx, cy = center_x + dx, center_y + dy
+                if (
+                    cx < 0
+                    or cx >= GRID_WIDTH
+                    or cy < 0
+                    or cy >= GRID_HEIGHT
+                    or (cy >= 0 and cx >= 0 and self.grid[cy][cx] is not None)
+                ):
+                    surrounding_filled += 1
+
+        # I-Spinの条件：周囲の6マス以上が埋まっている
+        is_spin = surrounding_filled >= 6
+        return is_spin, "I-Spin" if is_spin else None
+
+    def check_j_spin(self, j_x, j_y):
+        """J-Spinの条件をチェックする"""
+        # J型の中心座標（3x3グリッドの中心）
+        center_x = j_x + 1
+        center_y = j_y + 1
+
+        # 4隅の座標
+        corners = [
+            (center_x - 1, center_y - 1),  # 左上
+            (center_x + 1, center_y - 1),  # 右上
+            (center_x - 1, center_y + 1),  # 左下
+            (center_x + 1, center_y + 1),  # 右下
+        ]
+
+        corners_filled = 0
+        for cx, cy in corners:
+            if (
+                cx < 0
+                or cx >= GRID_WIDTH
+                or cy < 0
+                or cy >= GRID_HEIGHT
+                or (cy >= 0 and cx >= 0 and self.grid[cy][cx] is not None)
+            ):
+                corners_filled += 1
+
+        # J-Spinの条件：3つ以上の隅が埋まっている
+        is_spin = corners_filled >= 3
+        return is_spin, "J-Spin" if is_spin else None
+
+    def check_l_spin(self, l_x, l_y):
+        """L-Spinの条件をチェックする"""
+        # L型の中心座標（3x3グリッドの中心）
+        center_x = l_x + 1
+        center_y = l_y + 1
+
+        # 4隅の座標
+        corners = [
+            (center_x - 1, center_y - 1),  # 左上
+            (center_x + 1, center_y - 1),  # 右上
+            (center_x - 1, center_y + 1),  # 左下
+            (center_x + 1, center_y + 1),  # 右下
+        ]
+
+        corners_filled = 0
+        for cx, cy in corners:
+            if (
+                cx < 0
+                or cx >= GRID_WIDTH
+                or cy < 0
+                or cy >= GRID_HEIGHT
+                or (cy >= 0 and cx >= 0 and self.grid[cy][cx] is not None)
+            ):
+                corners_filled += 1
+
+        # L-Spinの条件：3つ以上の隅が埋まっている
+        is_spin = corners_filled >= 3
+        return is_spin, "L-Spin" if is_spin else None
+
+    def check_s_spin(self, s_x, s_y):
+        """S-Spinの条件をチェックする"""
+        rotation = self.current_piece["rotation"]
+        
+        # S型のスピン判定は回転状態によって判定する位置が異なる
+        if rotation == 0 or rotation == 2:  # 水平状態
+            # 水平のS型の場合、上下の特定位置をチェック
+            check_positions = [
+                (s_x, s_y - 1),      # 上側中央
+                (s_x + 1, s_y - 1),  # 上側右
+                (s_x + 1, s_y + 2),  # 下側右
+                (s_x + 2, s_y + 2),  # 下側右端
+            ]
+        else:  # 垂直状態 (rotation == 1 or rotation == 3)
+            # 垂直のS型の場合、左右の特定位置をチェック
+            check_positions = [
+                (s_x - 1, s_y),      # 左側上
+                (s_x - 1, s_y + 1),  # 左側下
+                (s_x + 2, s_y + 1),  # 右側下
+                (s_x + 2, s_y + 2),  # 右側下端
+            ]
+
+        filled_count = 0
+        for cx, cy in check_positions:
+            if (
+                cx < 0
+                or cx >= GRID_WIDTH
+                or cy < 0
+                or cy >= GRID_HEIGHT
+                or (cy >= 0 and cx >= 0 and self.grid[cy][cx] is not None)
+            ):
+                filled_count += 1
+
+        # S-Spinの条件：3つ以上の特定位置が埋まっている
+        is_spin = filled_count >= 3
+        return is_spin, "S-Spin" if is_spin else None
+
+    def check_z_spin(self, z_x, z_y):
+        """Z-Spinの条件をチェックする"""
+        rotation = self.current_piece["rotation"]
+        
+        # Z型のスピン判定は回転状態によって判定する位置が異なる
+        if rotation == 0 or rotation == 2:  # 水平状態
+            # 水平のZ型の場合、上下の特定位置をチェック
+            check_positions = [
+                (z_x + 1, z_y - 1),  # 上側中央
+                (z_x + 2, z_y - 1),  # 上側右
+                (z_x, z_y + 2),      # 下側左
+                (z_x + 1, z_y + 2),  # 下側中央
+            ]
+        else:  # 垂直状態 (rotation == 1 or rotation == 3)
+            # 垂直のZ型の場合、左右の特定位置をチェック
+            check_positions = [
+                (z_x - 1, z_y + 1),  # 左側中
+                (z_x - 1, z_y + 2),  # 左側下
+                (z_x + 2, z_y),      # 右側上
+                (z_x + 2, z_y + 1),  # 右側中
+            ]
+
+        filled_count = 0
+        for cx, cy in check_positions:
+            if (
+                cx < 0
+                or cx >= GRID_WIDTH
+                or cy < 0
+                or cy >= GRID_HEIGHT
+                or (cy >= 0 and cx >= 0 and self.grid[cy][cx] is not None)
+            ):
+                filled_count += 1
+
+        # Z-Spinの条件：3つ以上の特定位置が埋まっている
+        is_spin = filled_count >= 3
+        return is_spin, "Z-Spin" if is_spin else None
+
+    def check_o_spin(self, o_x, o_y):
+        """O-Spinの条件をチェックする（O型は回転しないため常にFalse）"""
+        # O型は回転しないため、スピンは発生しない
+        return False, None
 
     def toggle_pause(self):
         """ゲームの一時停止/再開を切り替える"""
@@ -552,9 +813,12 @@ class Tetris:
             # ゴーストピースの更新
             self.ghost_piece = self.get_ghost_piece()
 
-            # 移動後に接地していない場合はロックディレイをリセット
-            if self.valid_move(self.current_piece, y_offset=1):
-                self.lock_delay = 0
+            # 移動時はスピン状態をリセット（回転後の移動でスピンが無効になる）
+            self.current_spin_type = None
+
+            # 修正：移動時のロックディレイリセット
+            if self.is_on_ground:
+                self.reset_lock_delay()
 
             # 効果音
             if move_sound and has_sound and settings.get("sound", True):
@@ -637,12 +901,12 @@ class Tetris:
 
     def lock_piece(self):
         """現在のピースをグリッドに固定する"""
-        # T-Spinチェック
-        self.check_tspin()
-
         # ピースが存在しない場合は何もしない
         if not self.current_piece:
             return
+
+        # スピンチェックは回転時に既に実行済みなので、ここでは再実行しない
+        # current_spin_typeの値をそのまま使用
 
         # 現在のピースをグリッドに追加
         for y, row in enumerate(self.current_piece["shape"]):
@@ -691,12 +955,22 @@ class Tetris:
         # ラインクリアチェック
         self.check_lines()
 
+        # 修正：ロックディレイシステムをリセット
+        self.lock_delay = 0
+        self.lock_delay_resets = 0
+        self.is_on_ground = False
+        self.last_move_reset_lock = False
+        self.has_ever_been_grounded = False
+
         # ホールドリセット
         self.can_hold = True
 
         # 次のピースを取得
         self.current_piece = self.next_pieces.pop(0)
         self.next_pieces.append(self.get_next_piece())
+
+        # スピン状態をリセット
+        self.current_spin_type = None
 
         # ゴーストピースの更新
         self.ghost_piece = self.get_ghost_piece()
@@ -727,6 +1001,9 @@ class Tetris:
                 lines_to_clear.append(y)
 
         lines_count = len(lines_to_clear)
+        # オンライン対戦用のライン消去数を記録
+        self.lines_cleared_this_frame = lines_count
+        
         if lines_count == 0:
             # ラインが消去されない場合はコンボをリセット
             self.combo = 0
@@ -740,13 +1017,22 @@ class Tetris:
             clear_sound_to_play = clear_sound
 
         # スコア計算
-        # T-Spinボーナス
-        tspin_bonus = 0
-        tspin_text = ""
-        if self.is_tspin:
-            self.tspin_count += 1
-            tspin_text = "T-Spin "
-            tspin_bonus = 400 * self.level
+        # スピンボーナス
+        spin_bonus = 0
+        spin_text = ""
+        if self.current_spin_type:
+            self.spin_count[self.current_spin_type] += 1
+            spin_text = f"{self.current_spin_type} "
+
+            # スピンタイプ別ボーナス
+            if self.current_spin_type == "T-Spin":
+                spin_bonus = 400 * self.level
+            elif self.current_spin_type == "I-Spin":
+                spin_bonus = 300 * self.level
+            elif self.current_spin_type in ["J-Spin", "L-Spin"]:
+                spin_bonus = 250 * self.level
+            elif self.current_spin_type in ["S-Spin", "Z-Spin"]:
+                spin_bonus = 200 * self.level
 
         # ライン消去ボーナス
         line_bonus = 0
@@ -764,7 +1050,7 @@ class Tetris:
             line_text = "Tetris!"
 
         # 合計スコア
-        self.score += line_bonus + tspin_bonus
+        self.score += line_bonus + spin_bonus
 
         # コンボボーナス
         self.combo += 1
@@ -786,15 +1072,10 @@ class Tetris:
 
         # ライン消去テキスト表示
         if lines_count > 0:
-            clear_text = f"{tspin_text}{line_text}"
-            # グローバル変数を正しく参照
-            import config
-
+            clear_text = f"{spin_text}{line_text}"
             self.add_floating_text(
-                config.grid_x + (GRID_WIDTH * BLOCK_SIZE * config.scale_factor) // 2,
-                config.grid_y
-                + (GRID_HEIGHT * BLOCK_SIZE * config.scale_factor) // 2
-                - 40,
+                grid_x + (GRID_WIDTH * BLOCK_SIZE * scale_factor) // 2,
+                grid_y + (GRID_HEIGHT * BLOCK_SIZE * scale_factor) // 2 - 40,
                 clear_text,
                 (255, 255, 0),
                 36,
@@ -875,6 +1156,9 @@ class Tetris:
         if self.game_over or self.paused:
             return
 
+        # フレーム毎の初期化
+        self.lines_cleared_this_frame = 0
+
         # ゲーム時間の更新
         self.time_played += dt
 
@@ -893,18 +1177,45 @@ class Tetris:
             1 + (self.soft_drop * 9)
         )  # ソフトドロップで10倍速く
 
+        # 修正：接地状態の更新
+        was_on_ground = self.is_on_ground
+        self.is_on_ground = self.is_piece_on_ground()
+
+        # 新しく接地した場合のみ、ロックディレイリセット回数をリセット
+        if not was_on_ground and self.is_on_ground:
+            # 初回接地時のみリセット回数をリセット
+            if not self.has_ever_been_grounded:
+                self.lock_delay_resets = 0
+                self.has_ever_been_grounded = True
+                print(f"初回接地 - リセット回数: {self.lock_delay_resets}")
+            else:
+                print(f"再接地 - リセット回数維持: {self.lock_delay_resets}")
+            self.last_move_reset_lock = False
+
         if self.fall_time >= fall_speed:
             self.fall_time = 0
             # 下に移動できるかチェック
             if self.valid_move(self.current_piece, y_offset=1):
                 self.current_piece["y"] += 1
-                # ロックディレイをリセット
-                self.lock_delay = 0
+                # 自然落下時のみロックディレイをリセット（リセット回数は保持）
+                if not self.is_on_ground:
+                    self.lock_delay = 0
+                    # リセット回数は保持（一度接地したピースの延命回数を維持）
             else:
-                # 接地している場合、ロックディレイを増加
-                self.lock_delay += fall_speed  # dtではなくfall_speedを使用
-                if self.lock_delay >= self.max_lock_delay:
-                    self.lock_piece()
+                # 修正：接地している場合、ロックディレイを増加
+                if self.is_on_ground:
+                    self.lock_delay += dt
+
+                    # レベルに応じたロックディレイの調整
+                    adjusted_lock_delay = self.max_lock_delay
+                    if self.level >= 20:
+                        adjusted_lock_delay = max(
+                            0.1, self.max_lock_delay - (self.level - 20) * 0.01
+                        )
+
+                    # ロックディレイが最大値に達した場合、ピースを固定
+                    if self.lock_delay >= adjusted_lock_delay:
+                        self.lock_piece()
 
         # 接地状態でもロックディレイを進める（移動やローテーション後の処理用）
         elif not self.valid_move(self.current_piece, y_offset=1):
@@ -1085,6 +1396,19 @@ class Tetris:
 
                         pygame.draw.rect(screen, theme["ui_border"], block_rect, 1)
 
+        # 現在のスピン状態表示（ホールド表示の下）
+        if self.current_spin_type:
+            spin_indicator_text = small_font.render(
+                f"準備中: {self.current_spin_type}", True, (255, 255, 100)
+            )
+            screen.blit(
+                spin_indicator_text,
+                (
+                    grid_x - 150 * scale_factor,
+                    grid_y + 180 * scale_factor,
+                ),
+            )
+
         # スコア情報の表示
         score_x = grid_x - 180 * scale_factor
         score_y = grid_y + 200 * scale_factor
@@ -1118,6 +1442,27 @@ class Tetris:
         screen.blit(level_text, (score_x, score_y + 40 * scale_factor))
         screen.blit(lines_text, (score_x, score_y + 80 * scale_factor))
         screen.blit(mode_text, (score_x, score_y + 120 * scale_factor))
+
+        # スピン統計の表示（スコア情報の下に追加）
+        spin_stats_y = score_y + 160 * scale_factor
+
+        # T-Spin統計（後方互換性）
+        if self.spin_count["T-Spin"] > 0:
+            tspin_stat_text = font.render(
+                f"T-Spin: {self.spin_count['T-Spin']}", True, theme["text"]
+            )
+            screen.blit(tspin_stat_text, (score_x, spin_stats_y))
+            spin_stats_y += 25 * scale_factor
+
+        # その他のスピン統計
+        other_spins = ["I-Spin", "J-Spin", "L-Spin", "S-Spin", "Z-Spin"]
+        for spin_type in other_spins:
+            if self.spin_count[spin_type] > 0:
+                spin_stat_text = small_font.render(
+                    f"{spin_type}: {self.spin_count[spin_type]}", True, theme["text"]
+                )
+                screen.blit(spin_stat_text, (score_x, spin_stats_y))
+                spin_stats_y += 20 * scale_factor
 
         # パーティクルの描画
         self.particle_system.draw(screen)
@@ -1178,9 +1523,23 @@ class Tetris:
             title_text,
             (
                 screen.get_width() // 2 - title_text.get_width() // 2,
-                panel_y + 30 * scale_factor,
+                panel_y + 240 * scale_factor,
             ),
         )
+
+        # スピン統計表示
+        total_spins = sum(self.spin_count.values())
+        if total_spins > 0:
+            spin_summary_text = small_font.render(
+                f"総スピン数: {total_spins}", True, theme["text"]
+            )
+            screen.blit(
+                spin_summary_text,
+                (
+                    screen.get_width() // 2 - spin_summary_text.get_width() // 2,
+                    panel_y + 270 * scale_factor,
+                ),
+            )
 
         # 結果表示
         score_text = font.render(f"スコア: {self.score}", True, theme["text"])

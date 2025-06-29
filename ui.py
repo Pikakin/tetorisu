@@ -239,10 +239,20 @@ def draw_start_menu(screen):
         action="game_mode",
     )
 
+    # オンライン対戦ボタン
+    online_button = Button(
+        config.screen_width // 2 - 150 * config.scale_factor,
+        panel_y + 310 * config.scale_factor,
+        300 * config.scale_factor,
+        50 * config.scale_factor,
+        "オンライン対戦",
+        action="online",
+    )
+
     # 設定ボタン
     settings_button = Button(
         config.screen_width // 2 - 150 * config.scale_factor,
-        panel_y + 310 * config.scale_factor,
+        panel_y + 380 * config.scale_factor,
         300 * config.scale_factor,
         50 * config.scale_factor,
         "設定",
@@ -252,7 +262,7 @@ def draw_start_menu(screen):
     # テーマ切替ボタン
     theme_button = Button(
         config.screen_width // 2 - 150 * config.scale_factor,
-        panel_y + 380 * config.scale_factor,
+        panel_y + 450 * config.scale_factor,
         300 * config.scale_factor,
         50 * config.scale_factor,
         f"テーマ: {config.settings.get('theme', 'classic').capitalize()}",
@@ -262,7 +272,7 @@ def draw_start_menu(screen):
     # ハイスコアボタン
     high_scores_button = Button(
         config.screen_width // 2 - 150 * config.scale_factor,
-        panel_y + 450 * config.scale_factor,
+        panel_y + 520 * config.scale_factor,
         300 * config.scale_factor,
         50 * config.scale_factor,
         "ハイスコア",
@@ -272,7 +282,7 @@ def draw_start_menu(screen):
     # 終了ボタン
     quit_button = Button(
         config.screen_width // 2 - 150 * config.scale_factor,
-        panel_y + 520 * config.scale_factor,
+        panel_y + 590 * config.scale_factor,
         300 * config.scale_factor,
         50 * config.scale_factor,
         "終了",
@@ -281,6 +291,7 @@ def draw_start_menu(screen):
 
     buttons.append(start_button)
     buttons.append(mode_button)
+    buttons.append(online_button)
     buttons.append(settings_button)
     buttons.append(theme_button)
     buttons.append(high_scores_button)

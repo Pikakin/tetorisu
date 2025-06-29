@@ -23,3 +23,47 @@ git config user.name
 git config user.name Pikakin
 git config user.email moeirtanatana@gmail.com
 & C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& c:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+echo beepboop
+mkdir network
+cd .\network\
+cd ..
+python .\start_server.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/network/server.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+python .\start_server.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+mkdir go-server
+cd .\go-server\
+go run main.go`
+
+ls
+go 
+go version
+go
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+& C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py
+ C:/Users/佐藤/AI/tetorisu/.tetorisu/Scripts/python.exe c:/Users/佐藤/AI/tetorisu/main.py

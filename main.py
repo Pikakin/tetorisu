@@ -44,8 +44,10 @@ def main():
     keys_held = {}  # キーが押されている状態を管理
 
     # ゲーム状態
-    game_state = "menu"  # menu, game, pause, game_over, high_scores, settings
+    game_state = "menu"  # menu, game, pause, game_over, high_scores, settings, online_lobby, online_game
     game = None
+    online_lobby = None
+    online_game = None
 
     # 設定のスクロールオフセット
     settings_scroll_offset = 0
@@ -90,6 +92,26 @@ def main():
     if config.has_music and config.settings.get("music", True):
         pygame.mixer.music.play(-1)  # 無限ループ
 
+    # ヘルパー関数
+    def set_game_state(new_state):
+        nonlocal game_state, online_lobby, online_game
+        if new_state == "menu":
+            if online_lobby:
+                online_lobby.disconnect()
+                online_lobby = None
+            if online_game:
+                online_game = None
+        game_state = new_state
+    
+    def start_online_game(client):
+        nonlocal online_game, game_state
+        print("start_online_game関数が呼ばれました")
+        from online_game import OnlineGame
+        online_game = OnlineGame(config.screen_width, config.screen_height, client)
+        online_game.start_game()
+        print(f"ゲーム状態を変更: {game_state} -> online_game")
+        game_state = "online_game"
+
     # メインゲームループ
     while True:
         dt = clock.tick(60) / 1000.0  # フレーム間の時間（秒）
@@ -99,7 +121,8 @@ def main():
         mouse_clicked = False
 
         # イベント処理
-        for event in pygame.event.get():
+        events = pygame.event.get()
+        for event in events:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -293,6 +316,13 @@ def main():
                             next_index = (modes.index(current_mode) + 1) % len(modes)
                             config.settings["game_mode"] = modes[next_index]
                             config.save_settings(config.settings)
+                        elif action == "online":
+                            # オンライン対戦画面へ
+                            from lobby import OnlineLobby
+                            online_lobby = OnlineLobby(config.screen_width, config.screen_height)
+                            online_lobby.on_back_to_menu = lambda: set_game_state("menu")
+                            online_lobby.on_game_start = start_online_game
+                            game_state = "online_lobby"
                         elif action == "settings":
                             # 設定画面へ
                             game_state = "settings"
@@ -456,6 +486,27 @@ def main():
                             bgm_manager.change_bgm(bgm_file)
                             # プレビュー再生
                             bgm_manager.play_bgm()
+
+        elif game_state == "online_lobby":
+            if online_lobby:
+                # オンラインロビーの更新
+                online_lobby.update(events, mouse_pos)
+                
+                # オンラインロビーの描画
+                online_lobby.draw(screen)
+
+        elif game_state == "online_game":
+            if online_game:
+                # オンラインゲームの更新
+                online_game.update(events, keys_held, dt)
+                
+                # オンラインゲームからの退出チェック
+                if hasattr(online_game, 'should_exit') and online_game.should_exit:
+                    game_state = "online_lobby"
+                    online_game = None
+                else:
+                    # オンラインゲームの描画
+                    online_game.draw(screen)
 
         # 画面の更新
         pygame.display.flip()

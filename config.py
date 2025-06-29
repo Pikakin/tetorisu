@@ -352,6 +352,8 @@ def load_settings():
             "game_mode": "marathon",  # ゲームモード
             "das": 0.17,  # Delayed Auto Shift (秒)
             "arr": 0.03,  # Auto Repeat Rate (秒)
+            "lock_delay": 0.5,  # 追加：ロックディレイ設定
+            "max_lock_resets": 15,  # 追加：最大ロックディレイリセット回数
             "key_bindings": {  # キー設定
                 "move_left": pygame.K_LEFT,
                 "move_right": pygame.K_RIGHT,
